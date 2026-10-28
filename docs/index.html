@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudentSphere | Student Management System</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="logo">
+            <div class="logo-icon">S</div>
+            <div>
+                <h2>StudentSphere</h2>
+                <p>Management Portal</p>
+            </div>
+        </div>
+
+        <p class="menu-heading">MAIN MENU</p>
+        <nav>
+            <a href="#dashboard" class="nav-link active">▦ Dashboard</a>
+            <a href="#students" class="nav-link">♙ Students</a>
+            <a href="#add-student" class="nav-link">＋ Add Student</a>
+            <a href="#results" class="nav-link">▤ Results</a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="profile">
+                <div class="avatar">A</div>
+                <div>
+                    <strong>Administrator</strong>
+                    <p>Student Portal</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div>
+                <p class="welcome">WELCOME BACK</p>
+                <h1>Student Dashboard</h1>
+                <p class="subtitle">Manage student records and academic results.</p>
+            </div>
+            <a href="#add-student" class="primary-button">+ Add Student</a>
+        </header>
+
+        <section id="dashboard">
+            <div class="section-heading">
+                <div>
+                    <h2>Overview</h2>
+                    <p>Summary of student information</p>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">♙</div>
+                    <p>Total Students</p>
+                    <h3 id="totalStudents">0</h3>
+                    <span>Registered students</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">✓</div>
+                    <p>Students Passed</p>
+                    <h3 id="passedStudents">0</h3>
+                    <span>Marks of 50 or above</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">▤</div>
+                    <p>Average Marks</p>
+                    <h3 id="averageMarks">0%</h3>
+                    <span>Overall performance</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon purple">★</div>
+                    <p>Top Grade</p>
+                    <h3 id="topGrade">-</h3>
+                    <span>Highest grade category</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="add-student" class="content-card">
+            <div class="section-heading">
+                <div>
+                    <h2 id="formTitle">Add New Student</h2>
+                    <p>Enter the student's information below.</p>
+                </div>
+            </div>
+
+            <form id="studentForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="rollNo">Roll Number</label>
+                        <input type="number" id="rollNo" min="1"
+                               placeholder="Enter roll number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="studentName">Student Name</label>
+                        <input type="text" id="studentName"
+                               placeholder="Enter full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="studentAge">Age</label>
+                        <input type="number" id="studentAge"
+                               min="1" max="120" placeholder="Enter age" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="studentCourse">Course</label>
+                        <input type="text" id="studentCourse"
+                               placeholder="e.g. MCA" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="studentMarks">Marks (out of 100)</label>
+                        <input type="number" id="studentMarks"
+                               min="0" max="100" step="0.01"
+                               placeholder="Enter marks" required>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="reset" class="secondary-button">Clear Form</button>
+                    <button type="submit" class="primary-button" id="saveStudentButton">
+                        Save Student
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section id="students" class="content-card">
+            <div class="section-heading records-heading">
+                <div>
+                    <h2>Student Records</h2>
+                    <p>View and manage student information.</p>
+                </div>
+                <input type="search" id="studentSearch" class="search-input"
+                       placeholder="Search students..."
+                       aria-label="Search students">
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Roll No.</th>
+                            <th>Student Name</th>
+                            <th>Age</th>
+                            <th>Course</th>
+                            <th>Marks</th>
+                            <th>Grade</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentTableBody"></tbody>
+                </table>
+            </div>
+            <p class="table-note">Student records are stored in this browser.</p>
+            
+        </section>
+
+        <section id="results" class="content-card">
+            <div class="section-heading">
+                <div>
+                    <h2>Academic Results</h2>
+                    <p>Grade categories used by the system.</p>
+                </div>
+            </div>
+
+            <div class="grade-grid">
+                <div class="grade-card">
+                    <span class="grade grade-a">A</span>
+                    <strong>90–100</strong><p>Excellent</p>
+                </div>
+                <div class="grade-card">
+                    <span class="grade grade-b">B</span>
+                    <strong>80–89</strong><p>Very Good</p>
+                </div>
+                <div class="grade-card">
+                    <span class="grade grade-c">C</span>
+                    <strong>70–79</strong><p>Good</p>
+                </div>
+                <div class="grade-card">
+                    <span class="grade grade-d">D</span>
+                    <strong>60–69</strong><p>Satisfactory</p>
+                </div>
+                <div class="grade-card">
+                    <span class="grade grade-e">E</span>
+                    <strong>50–59</strong><p>Pass</p>
+                </div>
+                <div class="grade-card">
+                    <span class="grade grade-f">F</span>
+                    <strong>Below 50</strong><p>Fail</p>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>© 2026 StudentSphere. Student Management System.</p>
+            <p>Developed using C++, HTML, CSS and JavaScript.</p>
+        </footer>
+    </main>
+</div>
+</body>
+</html>
