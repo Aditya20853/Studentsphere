@@ -1,293 +1,86 @@
 
 #include "httplib.h"
-
+#include <mysql/mysql.h>
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
-#include <algorithm>
+#include <cstdlib>
+#include <mutex>
 
 using namespace std;
 
-// Student structure
 struct Student {
-    string rollNo;
-    string name;
-    int age;
-    string course;
-    int marks;
+    string rollNo, name, course;
+    int age, marks;
 };
 
-// File used for permanent storage
-const string DATA_FILE = "students.txt";
+MYSQL* db = nullptr;
+mutex dbMutex;
 
-// Student records loaded into memory
-vector<Student> students;
-
-// --------------------------------------------------
-// DEFAULT STUDENT RECORDS
-// --------------------------------------------------
-
-vector<Student> getDefaultStudents() {
-    return {
-        {"101", "Rahul Sharma", 22, "MCA", 85},
-        {"102", "Priya Singh", 23, "MCA", 92},
-        {"103", "Amit Kumar", 22, "MCA", 45},
-        {"104", "Neha Verma", 24, "MCA", 78}
-    };
+string escapeSQL(const string& value) {
+    string out(value.size() * 2 + 1, '\0');
+    unsigned long n = mysql_real_escape_string(
+        db, &out[0], value.c_str(),
+        static_cast<unsigned long>(value.size()));
+    out.resize(n);
+    return out;
 }
 
-// --------------------------------------------------
-// SAVE STUDENTS PERMANENTLY TO FILE
-// --------------------------------------------------
-
-bool saveStudents() {
-    ofstream file(DATA_FILE, ios::trunc);
-
-    if (!file.is_open()) {
-        cerr << "Error: Could not open " << DATA_FILE
-             << " for saving.\n";
+bool query(const string& sql) {
+    if (mysql_query(db, sql.c_str()) != 0) {
+        cerr << "MySQL error: " << mysql_error(db) << '\n';
         return false;
     }
-
-    // Format:
-    // rollNo|name|age|course|marks
-    for (const Student& s : students) {
-        file << s.rollNo << "|"
-             << s.name << "|"
-             << s.age << "|"
-             << s.course << "|"
-             << s.marks << "\n";
-    }
-
-    file.close();
-
-    return !file.fail();
+    return true;
 }
-
-// --------------------------------------------------
-// LOAD STUDENTS FROM FILE
-// --------------------------------------------------
-
-void loadStudents() {
-    ifstream file(DATA_FILE);
-
-    // If the file does not exist, create default records.
-    if (!file.is_open()) {
-        cout << "First run: Creating default student records.\n";
-
-        students = getDefaultStudents();
-
-        if (saveStudents()) {
-            cout << "Default records saved to "
-                 << DATA_FILE << ".\n";
-        }
-
-        return;
-    }
-
-    students.clear();
-
-    string line;
-
-    while (getline(file, line)) {
-        if (line.empty()) {
-            continue;
-        }
-
-        stringstream ss(line);
-
-        string rollNo;
-        string name;
-        string ageText;
-        string course;
-        string marksText;
-
-        // Read fields separated by |
-        if (!getline(ss, rollNo, '|')) continue;
-        if (!getline(ss, name, '|')) continue;
-        if (!getline(ss, ageText, '|')) continue;
-        if (!getline(ss, course, '|')) continue;
-        if (!getline(ss, marksText, '|')) continue;
-
-        try {
-            size_t agePos = 0;
-            size_t marksPos = 0;
-
-            int age = stoi(ageText, &agePos);
-            int marks = stoi(marksText, &marksPos);
-
-            if (agePos != ageText.size() ||
-                marksPos != marksText.size() ||
-                age <= 0 ||
-                marks < 0 ||
-                marks > 100 ||
-                rollNo.empty()) {
-                continue;
-            }
-
-            // Prevent duplicate roll numbers in loaded data.
-            bool duplicate = false;
-
-            for (const Student& existing : students) {
-                if (existing.rollNo == rollNo) {
-                    duplicate = true;
-                    break;
-                }
-            }
-
-            if (!duplicate) {
-                students.push_back({
-                    rollNo, name, age, course, marks
-                });
-            }
-
-        } catch (...) {
-            // Ignore invalid lines in the file.
-            continue;
-        }
-    }
-
-    file.close();
-
-    cout << "Loaded " << students.size()
-         << " student record(s) from "
-         << DATA_FILE << ".\n";
-}
-
-// --------------------------------------------------
-// JSON HELPER FUNCTIONS
-// --------------------------------------------------
-
-string jsonEscape(const string& input) {
-    string output;
-
-    for (unsigned char c : input) {
-        switch (c) {
-            case '"':
-                output += "\\\"";
-                break;
-
-            case '\\':
-                output += "\\\\";
-                break;
-
-            case '\n':
-                output += "\\n";
-                break;
-
-            case '\r':
-                output += "\\r";
-                break;
-
-            case '\t':
-                output += "\\t";
-                break;
-
-            default:
-                if (c < 32) {
-                    const char* hex = "0123456789abcdef";
-
-                    output += "\\u00";
-                    output += hex[(c >> 4) & 0x0F];
-                    output += hex[c & 0x0F];
-                } else {
-                    output += static_cast<char>(c);
-                }
-        }
-    }
-
-    return output;
-}
-
-string studentToJson(const Student& s) {
-    return
-        "{\"rollNo\":\"" + jsonEscape(s.rollNo) +
-        "\",\"name\":\"" + jsonEscape(s.name) +
-        "\",\"age\":" + to_string(s.age) +
-        ",\"course\":\"" + jsonEscape(s.course) +
-        "\",\"marks\":" + to_string(s.marks) + "}";
-}
-
-string allStudentsToJson() {
-    string result = "[";
-
-    for (size_t i = 0; i < students.size(); i++) {
-        if (i > 0) {
-            result += ",";
-        }
-
-        result += studentToJson(students[i]);
-    }
-
-    result += "]";
-    return result;
-}
-
-void sendError(httplib::Response& res,
-               int status,
-               const string& message) {
-    res.status = status;
-    res.set_content(
-        "{\"error\":\"" + jsonEscape(message) + "\"}",
-        "application/json"
-    );
-}
-
-// --------------------------------------------------
-// CORS: ALLOWS THE WEBPAGE TO CONNECT TO C++
-// --------------------------------------------------
 
 void setCORS(httplib::Response& res) {
     res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    res.set_header(
-        "Access-Control-Allow-Headers",
-        "Content-Type"
-    );
+    res.set_header("Access-Control-Allow-Methods",
+                   "GET, POST, PUT, DELETE, OPTIONS");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type");
 }
 
-// --------------------------------------------------
-// VALIDATION HELPERS
-// --------------------------------------------------
-
-bool hasUnsafeCharacters(const string& value) {
-    // The | character separates fields in students.txt.
-    return value.find('|') != string::npos ||
-           value.find('\n') != string::npos ||
-           value.find('\r') != string::npos;
-}
-
-bool readIntegerParam(
-    const httplib::Request& req,
-    const string& key,
-    int& result
-) {
-    if (!req.has_param(key)) {
-        return false;
+string jsonEscape(const string& s) {
+    string out;
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 32) {
+                    const char* hex = "0123456789abcdef";
+                    out += "\\u00";
+                    out += hex[c >> 4];
+                    out += hex[c & 15];
+                } else {
+                    out += static_cast<char>(c);
+                }
+        }
     }
-
-    string value = req.get_param_value(key);
-
-    try {
-        size_t pos = 0;
-        result = stoi(value, &pos);
-
-        return pos == value.size();
-    } catch (...) {
-        return false;
-    }
+    return out;
 }
 
-bool readStudentParams(
-    const httplib::Request& req,
-    Student& s,
-    string& error
-) {
+string toJson(const Student& s) {
+    return "{\"rollNo\":\"" + jsonEscape(s.rollNo) +
+           "\",\"name\":\"" + jsonEscape(s.name) +
+           "\",\"age\":" + to_string(s.age) +
+           ",\"course\":\"" + jsonEscape(s.course) +
+           "\",\"marks\":" + to_string(s.marks) + "}";
+}
+
+void errorResponse(httplib::Response& res, int status,
+                   const string& message) {
+    res.status = status;
+    res.set_content("{\"error\":\"" + jsonEscape(message) + "\"}",
+                    "application/json");
+}
+
+bool readStudent(const httplib::Request& req, Student& s,
+                 string& error) {
     if (!req.has_param("rollNo") ||
         !req.has_param("name") ||
         !req.has_param("course")) {
@@ -299,22 +92,29 @@ bool readStudentParams(
     s.name = req.get_param_value("name");
     s.course = req.get_param_value("course");
 
-    if (s.rollNo.empty() || s.name.empty() ||
-        s.course.empty()) {
+    if (s.rollNo.empty() || s.name.empty() || s.course.empty()) {
         error = "Student fields cannot be empty.";
         return false;
     }
 
-    if (hasUnsafeCharacters(s.rollNo) ||
-        hasUnsafeCharacters(s.name) ||
-        hasUnsafeCharacters(s.course)) {
-        error = "The characters | and line breaks are not allowed.";
+    if (s.rollNo.find_first_of("\r\n") != string::npos ||
+        s.name.find_first_of("\r\n") != string::npos ||
+        s.course.find_first_of("\r\n") != string::npos) {
+        error = "Line breaks are not allowed.";
         return false;
     }
 
-    if (!readIntegerParam(req, "age", s.age) ||
-        !readIntegerParam(req, "marks", s.marks)) {
-        error = "Age and marks must be valid whole numbers.";
+    try {
+        size_t p1 = 0, p2 = 0;
+        string age = req.get_param_value("age");
+        string marks = req.get_param_value("marks");
+        s.age = stoi(age, &p1);
+        s.marks = stoi(marks, &p2);
+
+        if (p1 != age.size() || p2 != marks.size())
+            throw invalid_argument("invalid number");
+    } catch (...) {
+        error = "Age and marks must be whole numbers.";
         return false;
     }
 
@@ -322,202 +122,254 @@ bool readStudentParams(
         error = "Age must be positive and marks must be between 0 and 100.";
         return false;
     }
-
     return true;
 }
 
-// --------------------------------------------------
-// MAIN SERVER
-// --------------------------------------------------
+// Call with dbMutex already locked.
+bool exists(const string& rollNo) {
+    string sql = "SELECT roll_no FROM students WHERE roll_no='" +
+                 escapeSQL(rollNo) + "' LIMIT 1";
+    if (!query(sql)) return false;
+
+    MYSQL_RES* result = mysql_store_result(db);
+    if (!result) return false;
+
+    bool found = mysql_num_rows(result) > 0;
+    mysql_free_result(result);
+    return found;
+}
+
+bool loadStudents(vector<Student>& list) {
+    lock_guard<mutex> lock(dbMutex);
+    list.clear();
+
+    if (!query("SELECT roll_no,name,age,course,marks "
+               "FROM students ORDER BY roll_no"))
+        return false;
+
+    MYSQL_RES* result = mysql_store_result(db);
+    if (!result) return false;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(result))) {
+        Student s;
+        s.rollNo = row[0] ? row[0] : "";
+        s.name = row[1] ? row[1] : "";
+        s.age = row[2] ? atoi(row[2]) : 0;
+        s.course = row[3] ? row[3] : "";
+        s.marks = row[4] ? atoi(row[4]) : 0;
+        list.push_back(s);
+    }
+
+    mysql_free_result(result);
+    return true;
+}
 
 int main() {
-    // Load saved data before accepting requests.
-    loadStudents();
+    const char* user = getenv("STUDENTSPHERE_DB_USER");
+    const char* password = getenv("STUDENTSPHERE_DB_PASSWORD");
+
+    if (!user || !*user) user = "root";
+
+    if (!password || !*password) {
+        cerr << "Set STUDENTSPHERE_DB_PASSWORD before starting.\n";
+        return 1;
+    }
+
+    db = mysql_init(nullptr);
+    if (!db) {
+        cerr << "MySQL initialization failed.\n";
+        return 1;
+    }
+
+    if (!mysql_real_connect(db, "127.0.0.1", user, password,
+                            "studentsphere", 3306, nullptr, 0)) {
+        cerr << "MySQL connection failed: "
+             << mysql_error(db) << '\n';
+        mysql_close(db);
+        return 1;
+    }
+
+    mysql_set_character_set(db, "utf8mb4");
+    cout << "Connected to studentsphere database.\n";
+
+    // Insert sample records only when the table is empty.
+    {
+        lock_guard<mutex> lock(dbMutex);
+        if (!query("SELECT COUNT(*) FROM students")) {
+            mysql_close(db);
+            return 1;
+        }
+
+        MYSQL_RES* result = mysql_store_result(db);
+        if (!result) {
+            mysql_close(db);
+            return 1;
+        }
+
+        MYSQL_ROW row = mysql_fetch_row(result);
+        unsigned long long count =
+            (row && row[0]) ? strtoull(row[0], nullptr, 10) : 0;
+        mysql_free_result(result);
+
+        if (count == 0) {
+            const char* samples[] = {
+                "INSERT INTO students (roll_no,name,age,course,marks) VALUES ('101','Rahul Sharma',22,'MCA',85)",
+                "INSERT INTO students (roll_no,name,age,course,marks) VALUES ('102','Priya Singh',23,'MCA',92)",
+                "INSERT INTO students (roll_no,name,age,course,marks) VALUES ('103','Amit Kumar',22,'MCA',45)",
+                "INSERT INTO students (roll_no,name,age,course,marks) VALUES ('104','Neha Verma',24,'MCA',78)"
+            };
+
+            for (const char* sql : samples) {
+                if (!query(sql)) {
+                    mysql_close(db);
+                    return 1;
+                }
+            }
+            cout << "Sample records added to MySQL.\n";
+        }
+    }
 
     httplib::Server server;
 
-    // Handle browser CORS preflight requests.
     server.Options("/api/students",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
+        [](const httplib::Request&, httplib::Response& res) {
             setCORS(res);
             res.status = 204;
-        }
-    );
+        });
 
-    // Server status
     server.Get("/api/status",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
+        [](const httplib::Request&, httplib::Response& res) {
             setCORS(res);
-
             res.set_content(
-                "{\"message\":\"StudentSphere C++ server is working!\"}",
-                "application/json"
-            );
-        }
-    );
+                "{\"message\":\"StudentSphere C++ server is working with MySQL!\"}",
+                "application/json");
+        });
 
-    // GET: Display all student records
     server.Get("/api/students",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
+        [](const httplib::Request&, httplib::Response& res) {
             setCORS(res);
+            vector<Student> list;
 
-            res.set_content(
-                allStudentsToJson(),
-                "application/json"
-            );
-        }
-    );
-
-    // POST: Add a student
-    server.Post("/api/students",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
-            setCORS(res);
-
-            Student s;
-            string error;
-
-            if (!readStudentParams(req, s, error)) {
-                sendError(res, 400, error);
+            if (!loadStudents(list)) {
+                errorResponse(res, 500, "Could not read students from MySQL.");
                 return;
             }
 
-            for (const Student& existing : students) {
-                if (existing.rollNo == s.rollNo) {
-                    sendError(res, 409,
-                              "This roll number already exists.");
-                    return;
-                }
+            string json = "[";
+            for (size_t i = 0; i < list.size(); ++i) {
+                if (i) json += ",";
+                json += toJson(list[i]);
+            }
+            json += "]";
+            res.set_content(json, "application/json");
+        });
+
+    server.Post("/api/students",
+        [](const httplib::Request& req, httplib::Response& res) {
+            setCORS(res);
+            Student s{};
+            string error;
+
+            if (!readStudent(req, s, error)) {
+                errorResponse(res, 400, error);
+                return;
             }
 
-            students.push_back(s);
+            lock_guard<mutex> lock(dbMutex);
+            if (exists(s.rollNo)) {
+                errorResponse(res, 409, "This roll number already exists.");
+                return;
+            }
 
-            if (!saveStudents()) {
-                students.pop_back();
-                sendError(res, 500,
-                          "Could not save student data to file.");
+            string sql =
+                "INSERT INTO students (roll_no,name,age,course,marks) VALUES ('" +
+                escapeSQL(s.rollNo) + "','" + escapeSQL(s.name) + "'," +
+                to_string(s.age) + ",'" + escapeSQL(s.course) + "'," +
+                to_string(s.marks) + ")";
+
+            if (!query(sql)) {
+                errorResponse(res, 500, "Could not add student to MySQL.");
                 return;
             }
 
             res.status = 201;
-            res.set_content(
-                studentToJson(s),
-                "application/json"
-            );
-        }
-    );
+            res.set_content(toJson(s), "application/json");
+        });
 
-    // PUT: Update an existing student
     server.Put("/api/students",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
+        [](const httplib::Request& req, httplib::Response& res) {
             setCORS(res);
-
-            Student updated;
+            Student s{};
             string error;
 
-            if (!readStudentParams(req, updated, error)) {
-                sendError(res, 400, error);
+            if (!readStudent(req, s, error)) {
+                errorResponse(res, 400, error);
                 return;
             }
 
-            auto it = find_if(
-                students.begin(),
-                students.end(),
-                [&](const Student& s) {
-                    return s.rollNo == updated.rollNo;
-                }
-            );
-
-            if (it == students.end()) {
-                sendError(res, 404, "Student not found.");
+            lock_guard<mutex> lock(dbMutex);
+            if (!exists(s.rollNo)) {
+                errorResponse(res, 404, "Student not found.");
                 return;
             }
 
-            Student previous = *it;
-            *it = updated;
+            string sql =
+                "UPDATE students SET name='" + escapeSQL(s.name) +
+                "', age=" + to_string(s.age) +
+                ", course='" + escapeSQL(s.course) +
+                "', marks=" + to_string(s.marks) +
+                " WHERE roll_no='" + escapeSQL(s.rollNo) + "'";
 
-            if (!saveStudents()) {
-                *it = previous;
-                sendError(res, 500,
-                          "Could not save updated student data.");
+            if (!query(sql)) {
+                errorResponse(res, 500, "Could not update student in MySQL.");
                 return;
             }
 
-            res.set_content(
-                studentToJson(updated),
-                "application/json"
-            );
-        }
-    );
+            res.set_content(toJson(s), "application/json");
+        });
 
-    // DELETE: Remove a student
     server.Delete("/api/students",
-        [](const httplib::Request& req,
-           httplib::Response& res) {
+        [](const httplib::Request& req, httplib::Response& res) {
             setCORS(res);
 
-            if (!req.has_param("rollNo")) {
-                sendError(res, 400, "Please provide rollNo.");
+            if (!req.has_param("rollNo") ||
+                req.get_param_value("rollNo").empty()) {
+                errorResponse(res, 400, "Please provide rollNo.");
                 return;
             }
 
             string rollNo = req.get_param_value("rollNo");
+            lock_guard<mutex> lock(dbMutex);
 
-            auto it = find_if(
-                students.begin(),
-                students.end(),
-                [&](const Student& s) {
-                    return s.rollNo == rollNo;
-                }
-            );
-
-            if (it == students.end()) {
-                sendError(res, 404, "Student not found.");
+            if (!exists(rollNo)) {
+                errorResponse(res, 404, "Student not found.");
                 return;
             }
 
-            size_t index = static_cast<size_t>(
-                distance(students.begin(), it)
-            );
+            string sql = "DELETE FROM students WHERE roll_no='" +
+                         escapeSQL(rollNo) + "'";
 
-            Student removed = *it;
-            students.erase(it);
-
-            if (!saveStudents()) {
-                students.insert(
-                    students.begin() + index,
-                    removed
-                );
-
-                sendError(res, 500,
-                          "Could not save changes to file.");
+            if (!query(sql)) {
+                errorResponse(res, 500, "Could not delete student from MySQL.");
                 return;
             }
 
             res.set_content(
                 "{\"message\":\"Student deleted successfully.\"}",
-                "application/json"
-            );
-        }
-    );
+                "application/json");
+        });
 
-    cout << "\n====================================\n";
-    cout << " StudentSphere C++ Server\n";
-    cout << " Permanent file storage enabled\n";
-    cout << " URL: http://localhost:8080\n";
-    cout << " Data file: " << DATA_FILE << "\n";
-    cout << " Press Ctrl+C to stop the server\n";
-    cout << "====================================\n\n";
+    cout << "StudentSphere server: http://localhost:8080\n";
+    cout << "Storage: MySQL (studentsphere)\n";
+    cout << "Press Ctrl+C to stop.\n";
 
     if (!server.listen("127.0.0.1", 8080)) {
-        cerr << "Could not start server on port 8080.\n";
-        cerr << "Check whether another server is already running.\n";
+        cerr << "Could not start server. Check whether port 8080 is already in use.\n";
+        mysql_close(db);
         return 1;
     }
 
+    mysql_close(db);
     return 0;
 }
